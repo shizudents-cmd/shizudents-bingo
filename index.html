@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Self Diagnosis Bingo - シズデンツ</title>
+  
+  <!-- Tailwind CSS (CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- React & ReactDOM (CDN) -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  
+  <!-- Babel for in-browser JSX compilation (CDN) -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    body { font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif; }
+    /* スクロールバーを隠す（スマホライクなUI） */
+    ::-webkit-scrollbar { display: none; }
+  </style>
+</head>
+<body class="bg-blue-50">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    // ビンゴの質問データ
+    const BINGO_DATA = [
+      { id: 'q2', title: 'Q2：旅行の計画は？', options: ['A.きっちり立てる派', 'B.行き当たりばったり派'] },
+      { id: 'q4', title: 'Q4：チームで動くときの自分の役割は？', options: ['A.リーダー・引っ張る', 'B.サポート・縁の下の力持ち', 'C.アイデア出し・企画'] },
+      { id: 'q7', title: 'Q7：頑張れる一番の理由は？', options: ['A.誰かに褒められる・認められる', 'B.自分が成長している実感', 'C.誰かの役に立っている実感'] },
+      { id: 'q8', title: 'Q8：新しい環境に入ったときは？', options: ['A.自分から積極的に話しかける', 'B.話しかけられるのを待つ'] },
+      { id: 'q1', title: 'Q1：休日の過ごし方は？', options: ['A.インドア派', 'B.アウトドア派'] },
+      { id: 'q5', title: 'Q5：何か決断をするときは？', options: ['A.直感・フィーリング', 'B.じっくり論理的に考える'] },
+      { id: 'q6', title: 'Q6：将来の働き方は？', options: ['A.一つのことを極めたい', 'B.色々なことに挑戦したい'] },
+      { id: 'q3', title: 'Q3：犬と猫、飼うなら？', options: ['A.犬派', 'B.猫派', 'C.その他・飼わない'] },
+      { id: 'q9', title: 'Q9：仕事を選ぶ上で大切にしたいのは？', options: ['A.やりがい・楽しさ', 'B.安定・条件の良さ', 'C.一緒に働く人'] },
+    ];
+
+    // ビンゴの勝利判定ライン（インデックス）
+    const WINNING_LINES = [
+      [0, 1, 2], [3, 4, 5], [6, 7, 8], // 横
+      [0, 3, 6], [1, 4, 7], [2, 5, 8], // 縦
+      [0, 4, 8], [2, 4, 6]             // 斜め
+    ];
+
+    function BingoApp() {
+      const [phase, setPhase] = useState('setup'); // 'setup' | 'play'
+      const [myAnswers, setMyAnswers] = useState({});
+      // clearedSquares は { index: number, name: string } の配列にする
+      const [clearedSquares, setClearedSquares] = useState([]);
+      const [activeSquareIndex, setActiveSquareIndex] = useState(null);
+      const [opponentNameInput, setOpponentNameInput] = useState('');
+      const [hasBingo, setHasBingo] = useState(false);
+      const [isMounted, setIsMounted] = useState(false);
+
+      // 初回レンダリング時にローカルストレージからデータを復元
+      useEffect(() => {
+        const savedAnswers = localStorage.getItem('shizudents_answers');
+        const savedCleared = localStorage.getItem('shizudents_cleared');
+        const savedPhase = localStorage.getItem('shizudents_phase');
+        
+        if (savedAnswers) setMyAnswers(JSON.parse(savedAnswers));
+        if (savedCleared) setClearedSquares(JSON.parse(savedCleared));
+        if (savedPhase) setPhase(savedPhase);
+        
+        setIsMounted(true);
+      }, []);
+
+      // 状態が変わるたびにローカルストレージに保存
+      useEffect(() => {
+        if (!isMounted) return;
+        localStorage.setItem('shizudents_answers', JSON.stringify(myAnswers));
+        localStorage.setItem('shizudents_cleared', JSON.stringify(clearedSquares));
+        localStorage.setItem('shizudents_phase', phase);
+      }, [myAnswers, clearedSquares, phase, isMounted]);
+
+      // ビンゴ判定
+      useEffect(() => {
+        if (phase !== 'play') return;
+        
+        const clearedIndices = clearedSquares.map(sq => sq.index);
+        let isBingo = false;
+        
+        for (const line of WINNING_LINES) {
+          if (line.every(index => clearedIndices.includes(index))) {
+            isBingo = true;
+            break;
+          }
+        }
+        
+        if (isBingo && !hasBingo) {
+          setHasBingo(true);
+          setTimeout(() => alert('BINGO!! おめでとうございます！引き続き全マス制覇を目指しましょう！'), 300);
+        }
+      }, [clearedSquares, phase, hasBingo]);
+
+      // 事前アンケートの回答ハンドラ
+      const handleAnswerSelect = (questionId, answer) => {
+        setMyAnswers(prev => ({ ...prev, [questionId]: answer }));
+      };
+
+      // ビンゴ開始ハンドラ
+      const handleStartBingo = () => {
+        if (Object.keys(myAnswers).length < 9) {
+          alert('すべての質問に回答してください！');
+          return;
+        }
+        setPhase('play');
+        window.scrollTo(0, 0);
+      };
+
+      // マスクリアハンドラ（名前を入力して確定）
+      const handleMarkClear = () => {
+        if (!opponentNameInput.trim()) {
+          alert('相手の名前（ニックネーム可）を入力してください。');
+          return;
+        }
+
+        const isAlreadyCleared = clearedSquares.some(sq => sq.index === activeSquareIndex);
+        if (!isAlreadyCleared) {
+          setClearedSquares(prev => [...prev, { index: activeSquareIndex, name: opponentNameInput.trim() }]);
+        }
+        setActiveSquareIndex(null);
+        setOpponentNameInput('');
+      };
+
+      // モーダルを閉じる
+      const handleCloseModal = () => {
+        setActiveSquareIndex(null);
+        setOpponentNameInput('');
+      };
+
+      // データリセット
+      const handleReset = () => {
+        if (window.confirm('本当にデータをリセットして最初からやり直しますか？')) {
+          setMyAnswers({});
+          setClearedSquares([]);
+          setPhase('setup');
+          setHasBingo(false);
+          localStorage.clear();
+        }
+      };
+
+      if (!isMounted) return null;
+
+      // ----------------------------------------------------------------------
+      // フェーズ1：事前回答画面
+      // ----------------------------------------------------------------------
+      if (phase === 'setup') {
+        return (
+          <div className="min-h-screen bg-blue-50 p-4 md:p-8">
+            <div className="max-w-2xl mx-auto bg-white rounded-2xl shadow-xl overflow-hidden pb-20">
+              <div className="bg-blue-600 p-6 text-white text-center">
+                <h1 className="text-2xl md:text-3xl font-black tracking-wider mb-2">Self Diagnosis Bingo</h1>
+                <p className="text-sm opacity-90">まずは自分の価値観を登録しよう！</p>
+              </div>
+              
+              <div className="p-4 md:p-6 space-y-6">
+                {BINGO_DATA.map((q) => (
+                  <div key={q.id} className="bg-blue-50/50 p-4 rounded-xl border border-blue-100">
+                    <h3 className="font-bold text-gray-800 mb-3 text-sm md:text-base">{q.title}</h3>
+                    <div className="flex flex-col space-y-2">
+                      {q.options.map((opt) => (
+                        <label 
+                          key={opt} 
+                          className={`flex items-center p-3 rounded-lg cursor-pointer transition-colors border ${
+                            myAnswers[q.id] === opt 
+                              ? 'bg-blue-100 border-blue-500 text-blue-800' 
+                              : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+                          }`}
+                        >
+                          <input 
+                            type="radio" 
+                            name={q.id} 
+                            value={opt} 
+                            checked={myAnswers[q.id] === opt}
+                            onChange={() => handleAnswerSelect(q.id, opt)}
+                            className="w-5 h-5 text-blue-600 border-gray-300 focus:ring-blue-500 mr-3"
+                          />
+                          <span className="font-medium text-sm md:text-base">{opt}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] z-10">
+                <div className="max-w-2xl mx-auto">
+                  <button
+                    onClick={handleStartBingo}
+                    disabled={Object.keys(myAnswers).length < 9}
+                    className={`w-full py-4 rounded-xl text-lg font-bold transition-all shadow-md ${
+                      Object.keys(myAnswers).length < 9 
+                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
+                        : 'bg-yellow-400 hover:bg-yellow-500 text-gray-900 shadow-lg transform hover:-translate-y-1'
+                    }`}
+                  >
+                    {Object.keys(myAnswers).length < 9 
+                      ? `残り ${9 - Object.keys(myAnswers).length} 問` 
+                      : 'ビンゴをスタートする！'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      // ----------------------------------------------------------------------
+      // フェーズ2：ビンゴプレイ画面
+      // ----------------------------------------------------------------------
+      return (
+        <div className="min-h-screen bg-gradient-to-br from-blue-300 to-blue-100 p-2 sm:p-4 flex flex-col items-center pb-10">
+          <div className="w-full max-w-lg">
+            
+            <div className="flex justify-between items-center mb-4 mt-2 px-2">
+              <h1 className="text-xl sm:text-2xl font-black text-blue-900 tracking-wider">
+                Self Diagnosis Bingo
+              </h1>
+              <button 
+                onClick={handleReset}
+                className="text-xs text-blue-800 bg-white/60 px-3 py-1.5 rounded-full hover:bg-white shadow-sm font-bold"
+              >
+                やり直す
+              </button>
+            </div>
+
+            {/* 3x3 ビンゴグリッド */}
+            <div className="bg-white p-2 sm:p-3 rounded-xl shadow-2xl grid grid-cols-3 gap-2 sm:gap-3 aspect-square relative">
+              <div className="absolute inset-0 border-4 border-blue-900 rounded-xl pointer-events-none z-10"></div>
+
+              {BINGO_DATA.map((q, index) => {
+                const clearedSquare = clearedSquares.find(sq => sq.index === index);
+                const isCleared = !!clearedSquare;
+                const myAnswer = myAnswers[q.id];
+                
+                return (
+                  <div 
+                    key={index}
+                    onClick={() => !isCleared && setActiveSquareIndex(index)}
+                    className={`relative flex flex-col p-1.5 sm:p-2 border-2 rounded-lg transition-all overflow-hidden ${
+                      isCleared 
+                        ? 'border-red-400 bg-red-50' 
+                        : 'border-blue-900 hover:bg-blue-50 bg-white cursor-pointer shadow-sm'
+                    }`}
+                  >
+                    <div className="text-[10px] sm:text-xs font-bold text-gray-700 leading-tight mb-1">
+                      {q.title.split('：')[0]}
+                    </div>
+                    
+                    <div className="text-xs sm:text-sm font-black text-blue-800 leading-tight mt-auto z-20">
+                      {myAnswer?.split('・')[0] || myAnswer}
+                    </div>
+
+                    {isCleared && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none bg-white/60 backdrop-blur-[1px] z-10">
+                        <div className="transform -rotate-12 border-4 border-red-500 rounded-full w-14 h-14 sm:w-16 sm:h-16 flex items-center justify-center opacity-90 mb-1">
+                          <span className="text-red-500 font-black text-sm sm:text-base tracking-widest">CLEAR</span>
+                        </div>
+                        <div className="bg-red-500 text-white text-[10px] sm:text-xs px-2 py-0.5 rounded-full font-bold shadow-sm max-w-[90%] truncate">
+                          {clearedSquare.name}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="mt-6 bg-white/90 backdrop-blur rounded-xl p-4 shadow-sm text-sm text-gray-800">
+              <p className="font-bold text-blue-900 mb-2">遊び方：</p>
+              <ul className="list-disc pl-5 space-y-1.5">
+                <li>マスをタップして、相手に質問を投げかけます。</li>
+                <li>相手の答えが「自分の答え」と同じなら、相手の名前を入力してクリア！</li>
+                <li>違った場合でも、「なぜそう思うの？」と深掘りして対話しましょう。</li>
+              </ul>
+            </div>
+          </div>
+
+          {/* 対話用モーダル */}
+          {activeSquareIndex !== null && (
+            <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+              <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl">
+                <div className="text-center mb-5">
+                  <span className="inline-block bg-blue-100 text-blue-800 text-xs px-3 py-1 rounded-full font-bold mb-3">
+                    相手に質問してみよう！
+                  </span>
+                  <h2 className="text-lg md:text-xl font-black text-gray-900 mb-4 leading-snug">
+                    {BINGO_DATA[activeSquareIndex].title}
+                  </h2>
+                  
+                  <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 mb-2">
+                    <p className="text-xs text-gray-500 mb-1">あなたの価値観</p>
+                    <p className="text-base font-bold text-blue-600">
+                      {myAnswers[BINGO_DATA[activeSquareIndex].id]}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="border-t border-gray-100 pt-4 mb-4">
+                  <p className="text-center font-bold text-gray-800 mb-3 text-sm">
+                    相手の答えは同じでしたか？
+                  </p>
+                  
+                  <div className="space-y-3">
+                    <div className="bg-red-50 p-3 rounded-xl border border-red-100">
+                      <p className="text-xs text-red-600 font-bold mb-1">同じだった場合（マスを開ける）</p>
+                      <input 
+                        type="text" 
+                        placeholder="相手の名前（ニックネーム可）" 
+                        value={opponentNameInput}
+                        onChange={(e) => setOpponentNameInput(e.target.value)}
+                        className="w-full p-2 border border-gray-300 rounded-lg mb-2 text-sm focus:ring-2 focus:ring-red-400 focus:outline-none"
+                      />
+                      <button 
+                        onClick={handleMarkClear}
+                        className="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-2.5 rounded-lg shadow-sm transition-colors text-sm"
+                      >
+                        サインをもらってクリア！
+                      </button>
+                    </div>
+
+                    <button 
+                      onClick={handleCloseModal}
+                      className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-3 rounded-xl transition-colors text-sm border border-gray-200"
+                    >
+                      違った（深掘りして対話へ）
+                    </button>
+                  </div>
+                </div>
+                
+                <button 
+                  onClick={handleCloseModal}
+                  className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 w-8 h-8 flex items-center justify-center rounded-full bg-gray-100"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<BingoApp />);
+  </script>
+</body>
+</html>
